@@ -136,6 +136,7 @@
             margin-bottom: 25px;
             flex-wrap: wrap;
             justify-content: center;
+            align-items: stretch;
         }
 
         .hint-card {
@@ -148,6 +149,8 @@
             max-width: 280px;
             box-shadow: 0 3px 10px rgba(0, 0, 0, 0.08);
             transition: all 0.3s ease;
+            display: flex;
+            flex-direction: column;
         }
 
         .hint-card:hover {
@@ -166,6 +169,25 @@
             color: #555;
             font-size: 14px;
             line-height: 1.6;
+            margin-bottom: 15px;
+        }
+
+        .hint-photo {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
+            margin-top: 15px;
+        }
+
+        .hint-photo-placeholder {
+            color: #856404;
+            margin-top: 10px;
+            padding: 10px;
+            background: #fff3cd;
+            border-radius: 6px;
+            text-align: center;
+            font-size: 13px;
         }
 
         .separator {
@@ -198,6 +220,13 @@
                 <div class="hint-card">
                     <div class="hint-version">{{ hint.version | e }}</div>
                     <div class="hint-description">{{ hint.description | e }}</div>
+                    {% if hint.photo %}
+                        {% if hint.photo.url %}
+                            <img src="{{ hint.photo.url }}" alt="{{ hint.photo.caption }}" class="hint-photo">
+                        {% else %}
+                            <div class="hint-photo-placeholder">📷 Место для фото: {{ hint.photo.caption }}</div>
+                        {% endif %}
+                    {% endif %}
                 </div>
                 {% endfor %}
             </div>

@@ -1,0 +1,9 @@
+admins.json
+.env
+__pycache__/
+*.pyc
+*.pyo
+*.db
+*.zip
+venv/
+.DS_Store

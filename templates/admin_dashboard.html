@@ -143,6 +143,9 @@
         <div class="header">
             <h1>📚 Управление мануалами</h1>
             <div style="display: flex; gap: 10px;">
+                {% if session.get('admin_role') == 'super_admin' %}
+                    <a href="{{ url_for('admin_users') }}" class="btn btn-primary">👥 Администраторы</a>
+                {% endif %}
                 <a href="{{ url_for('admin_stats_dashboard') }}" class="btn btn-primary">📊 Статистика</a>
                 <a href="{{ url_for('admin_topics') }}" class="btn btn-primary">🏷️ Тематики</a>
                 <a href="{{ url_for('admin_logout') }}" class="btn btn-logout">Выход</a>

@@ -33,14 +33,30 @@ class StatsManager:
     def _get_connection(self):
         """Получить подключение к PostgreSQL"""
         if not self.conn or self.conn.closed:
-            self.conn = psycopg2.connect(
-                host=os.getenv('POSTGRES_HOST', 'localhost'),
-                port=os.getenv('POSTGRES_PORT', '5432'),
-                database=os.getenv('POSTGRES_DB', 'helper_analytics'),
-                user=os.getenv('POSTGRES_USER', 'ruslan'),
-                password=os.getenv('POSTGRES_PASSWORD', ''),
-                cursor_factory=RealDictCursor
-            )
+            # Security Fix: Add SSL/TLS support for production
+            # In development, SSL may be disabled. In production, always use SSL.
+            ssl_mode = os.getenv('POSTGRES_SSLMODE', 'prefer')  # prefer, require, verify-ca, verify-full
+
+            connection_params = {
+                'host': os.getenv('POSTGRES_HOST', 'localhost'),
+                'port': os.getenv('POSTGRES_PORT', '5432'),
+                'database': os.getenv('POSTGRES_DB', 'helper_analytics'),
+                'user': os.getenv('POSTGRES_USER', 'ruslan'),
+                'password': os.getenv('POSTGRES_PASSWORD', ''),
+                'cursor_factory': RealDictCursor,
+                'connect_timeout': 10,
+                'sslmode': ssl_mode
+            }
+
+            # Add SSL certificate paths if provided
+            if os.getenv('POSTGRES_SSLCERT'):
+                connection_params['sslcert'] = os.getenv('POSTGRES_SSLCERT')
+            if os.getenv('POSTGRES_SSLKEY'):
+                connection_params['sslkey'] = os.getenv('POSTGRES_SSLKEY')
+            if os.getenv('POSTGRES_SSLROOTCERT'):
+                connection_params['sslrootcert'] = os.getenv('POSTGRES_SSLROOTCERT')
+
+            self.conn = psycopg2.connect(**connection_params)
         return self.conn
 
     def _init_db(self):

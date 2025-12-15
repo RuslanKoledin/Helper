@@ -163,11 +163,19 @@
         "hints": [
           {
             "version": "Новый Firefox",
-            "description": "Современный интерфейс с округлыми углами, меню расположено справа вверху (три горизонтальные полоски), адресная строка объединена с поиском"
+            "description": "Современный интерфейс с округлыми углами, меню расположено справа вверху (три горизонтальные полоски), адресная строка объединена с поиском",
+            "photo": {
+              "id": "AgACAgIAAxkBAAIKfGk6TFVhj1J7aY2SjRtYpY3vX5FbAAIuC2sbbibYSfX6mn9vAAFGugEAAwIAA20AAzYE",
+              "caption": "Пример нового Firefox"
+            }
           },
           {
             "version": "Старый Firefox",
-            "description": "Классический интерфейс с угловатыми элементами, меню может быть в виде кнопки \"Firefox\" слева вверху или классического меню"
+            "description": "Классический интерфейс с угловатыми элементами, меню может быть в виде кнопки \"Firefox\" слева вверху или классического меню",
+            "photo": {
+              "id": "AgACAgIAAxkBAAIKfmk6THjfSzV0YoeIVgYdCqDfND_fAAIvC2sbbibYSQJv7S2DjkEhAQADAgADbQADNgQ",
+              "caption": "Пример старого Firefox"
+            }
           }
         ]
       },

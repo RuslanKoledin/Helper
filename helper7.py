@@ -10,14 +10,78 @@ import werkzeug.routing
 import traceback
 import re
 from html import escape as html_escape
+from functools import wraps
+from time import time
+from collections import defaultdict
 
 # Загружаем переменные окружения ПЕРЕД импортом admin_manager
 load_dotenv()
 
 from flask_wtf.csrf import CSRFProtect
-from admin_manager import admin_manager, AdminAuth
+from admin_manager import admin_manager, AdminAuth, admins_manager, ROLE_SUPER_ADMIN, ROLE_EDITOR, ROLE_NAMES
 from topics_manager import TopicsManager
 from stats_manager import StatsManager
+
+# ============================================
+# RATE LIMITING
+# ============================================
+
+class RateLimiter:
+    """Simple in-memory rate limiter"""
+    def __init__(self):
+        self.requests = defaultdict(list)
+        self.login_attempts = defaultdict(list)
+
+    def is_allowed(self, key: str, max_requests: int = 60, window: int = 60) -> bool:
+        """Check if request is allowed within rate limit"""
+        now = time()
+        # Clean old requests
+        self.requests[key] = [req_time for req_time in self.requests[key]
+                             if now - req_time < window]
+        # Check limit
+        if len(self.requests[key]) >= max_requests:
+            return False
+        self.requests[key].append(now)
+        return True
+
+    def check_login_attempt(self, ip: str, max_attempts: int = 5, window: int = 300) -> bool:
+        """Check login attempts (stricter limit)"""
+        now = time()
+        self.login_attempts[ip] = [req_time for req_time in self.login_attempts[ip]
+                                   if now - req_time < window]
+        if len(self.login_attempts[ip]) >= max_attempts:
+            return False
+        self.login_attempts[ip].append(now)
+        return True
+
+rate_limiter = RateLimiter()
+
+def rate_limit(max_requests: int = 60, window: int = 60):
+    """Rate limiting decorator"""
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            # Security Fix: Get client IP safely (validate trusted proxy)
+            # Only trust X-Forwarded-For if request comes from trusted proxy
+            trusted_proxies = set()
+            if TRUSTED_PROXY_IP:
+                trusted_proxies = {ip.strip() for ip in TRUSTED_PROXY_IP.split(',') if ip.strip()}
+
+            if request.remote_addr in trusted_proxies and request.headers.get('X-Forwarded-For'):
+                ip = request.headers.get('X-Forwarded-For').split(',')[0].strip()
+            else:
+                ip = request.remote_addr
+
+            key = f"{ip}:{f.__name__}"
+            if not rate_limiter.is_allowed(key, max_requests, window):
+                return jsonify({
+                    'success': False,
+                    'error': 'Слишком много запросов. Пожалуйста, подождите.'
+                }), 429
+
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
 
 app = Flask(__name__)
 csrf = CSRFProtect(app)
@@ -31,20 +95,29 @@ if not FLASK_SECRET_KEY:
 app.secret_key = FLASK_SECRET_KEY
 
 # Security configurations for production
-app.config['SESSION_COOKIE_SECURE'] = os.getenv('FLASK_ENV') == 'production'  # HTTPS only in production
+# Security Fix: Always use secure cookies in production
+IS_DEVELOPMENT = os.getenv('FLASK_ENV', 'production') == 'development'
+app.config['SESSION_COOKIE_SECURE'] = not IS_DEVELOPMENT  # Secure cookies only in production (requires HTTPS)
 app.config['SESSION_COOKIE_HTTPONLY'] = True  # Prevent JavaScript access to session cookie
-app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # CSRF protection
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax' if IS_DEVELOPMENT else 'Strict'  # Lax for dev, Strict for production
 app.config['PERMANENT_SESSION_LIFETIME'] = 3600  # 1 hour session timeout
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max request size (DoS protection)
 
 # Security headers
 @app.after_request
 def add_security_headers(response):
     """Add security headers to all responses"""
     response.headers['X-Content-Type-Options'] = 'nosniff'
-    response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+    response.headers['X-Frame-Options'] = 'DENY'  # Changed from SAMEORIGIN to DENY for better security
     response.headers['X-XSS-Protection'] = '1; mode=block'
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
-    # CSP allows inline styles (needed for existing templates) and Telegram API for images
+
+    # Security Fix: Add HSTS header for HTTPS enforcement
+    if request.is_secure or not IS_DEVELOPMENT:
+        response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+
+    # Security Fix: Improved CSP - consider removing unsafe-inline in future iterations
+    # TODO: Remove unsafe-inline by using nonces or hashes for inline scripts/styles
     response.headers['Content-Security-Policy'] = (
         "default-src 'self'; "
         "script-src 'self' 'unsafe-inline'; "
@@ -52,18 +125,33 @@ def add_security_headers(response):
         "img-src 'self' https://api.telegram.org data:; "
         "media-src 'self' https://api.telegram.org; "
         "font-src 'self'; "
-        "frame-ancestors 'self';"
+        "frame-ancestors 'none'; "  # Changed from 'self' to 'none'
+        "base-uri 'self'; "  # Added base-uri restriction
+        "form-action 'self';"  # Added form-action restriction
     )
+
+    # Security Fix: Add additional security headers
+    response.headers['X-Permitted-Cross-Domain-Policies'] = 'none'
+    response.headers['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
+
     return response
 
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 
 TRUSTED_PROXY_IP = os.getenv("TRUSTED_PROXY_IP")
 
-TECH_SUPPORT_CHAT_ID = int(os.getenv('TECH_SUPPORT_CHAT_ID'))
-NEW_TICKETS_THREAD_ID = int(os.getenv('NEW_TICKETS_THREAD_ID'))
-IN_PROGRESS_THREAD_ID = int(os.getenv('IN_PROGRESS_THREAD_ID'))
-SOLVED_TICKETS_THREAD_ID = int(os.getenv('SOLVED_TICKETS_THREAD_ID'))
+# Security Fix: Safe integer conversion with validation
+try:
+    TECH_SUPPORT_CHAT_ID = int(os.getenv('TECH_SUPPORT_CHAT_ID', '0'))
+    NEW_TICKETS_THREAD_ID = int(os.getenv('NEW_TICKETS_THREAD_ID', '0'))
+    IN_PROGRESS_THREAD_ID = int(os.getenv('IN_PROGRESS_THREAD_ID', '0'))
+    SOLVED_TICKETS_THREAD_ID = int(os.getenv('SOLVED_TICKETS_THREAD_ID', '0'))
+
+    if not all([TECH_SUPPORT_CHAT_ID, NEW_TICKETS_THREAD_ID, IN_PROGRESS_THREAD_ID, SOLVED_TICKETS_THREAD_ID]):
+        print("ПРЕДУПРЕЖДЕНИЕ: Не все ID чатов/топиков Telegram установлены!")
+except (ValueError, TypeError) as e:
+    print(f"ОШИБКА: Некорректные значения ID в переменных окружения: {e}")
+    exit(1)
 
 # Список ID пользователей техподдержки (загружается из env)
 SUPPORT_STAFF_IDS_STR = os.getenv('SUPPORT_STAFF_IDS', '')
@@ -78,7 +166,11 @@ bot = telebot.TeleBot(BOT_TOKEN)
 # Инициализация TopicsManager
 tm = TopicsManager("topics.db")
 
+# TODO: СТАТИСТИКА В РАЗРАБОТКЕ
 # Инициализация StatsManager для сбора аналитики
+# ВНИМАНИЕ: Модуль статистики находится в стадии разработки и тестирования
+# Используется PostgreSQL для хранения данных аналитики
+# В production окружении убедитесь, что база данных настроена корректно
 sm = StatsManager()
 
 # Импорт тематик при первом запуске (если база пустая)
@@ -601,10 +693,20 @@ def select_problem(problem_id):
                 'hints': []
             }
             for hint in hints_data.get('hints', []):
-                version_hints['hints'].append({
+                hint_item = {
                     'version': m_escape(str(hint.get('version', '')).strip()[:100]),
                     'description': m_escape(str(hint.get('description', '')).strip()[:500])
-                })
+                }
+                # Добавляем фото если есть
+                if 'photo' in hint:
+                    photo_data = hint['photo']
+                    photo_id = photo_data.get('id')
+                    photo_url = get_file_url(photo_id) if photo_id else None
+                    hint_item['photo'] = {
+                        'url': photo_url,
+                        'caption': m_escape(str(photo_data.get('caption', '')).strip()[:300])
+                    }
+                version_hints['hints'].append(hint_item)
 
         print(f"[select_problem] Rendering subproblems.html for problem_id: {problem_id}")
         return render_template(
@@ -721,6 +823,7 @@ def show_manual(subproblem_id):
 
 
 @app.route('/other_problem', methods=['GET', 'POST'])
+@rate_limit(max_requests=10, window=60)  # Security Fix: Add rate limiting to prevent DoS via file uploads
 def other_problem():
     if 'user_info' not in session:
         return redirect(url_for('index'))
@@ -742,16 +845,28 @@ def other_problem():
             except Exception as e:
                 print(f"[other_problem] Ошибка получения тематики: {e}")
 
-        # Обработка загруженных файлов
+        # Security Fix: File upload vulnerability - check size before loading into memory
         screenshots = []
         max_file_size = 10 * 1024 * 1024  # 10 МБ
+        allowed_image_types = {'image/jpeg', 'image/png', 'image/gif', 'image/webp'}
 
         for i in range(1, 4):  # screenshot1, screenshot2, screenshot3
             file_key = f'screenshot{i}'
             if file_key in request.files:
                 file = request.files[file_key]
                 if file and file.filename:
-                    # Проверяем размер файла
+                    # Security Fix: Validate content type before reading
+                    if not file.content_type or file.content_type not in allowed_image_types:
+                        flash(f'Файл {file.filename} имеет недопустимый тип. Разрешены: JPEG, PNG, GIF, WebP')
+                        continue
+
+                    # Security Fix: Check content-length header first (before loading into memory)
+                    content_length = request.content_length
+                    if content_length and content_length > max_file_size:
+                        flash(f'Файл {file.filename} слишком большой. Максимальный размер: 10 МБ')
+                        continue
+
+                    # Read file with size limit
                     file.seek(0, os.SEEK_END)
                     file_size = file.tell()
                     file.seek(0)
@@ -760,11 +875,7 @@ def other_problem():
                         flash(f'Файл {file.filename} слишком большой. Максимальный размер: 10 МБ')
                         continue
 
-                    # Проверяем тип файла
-                    if file.content_type and file.content_type.startswith('image/'):
-                        screenshots.append(file)
-                    else:
-                        flash(f'Файл {file.filename} не является изображением')
+                    screenshots.append(file)
 
         send_ticket(problem_description, screenshots, topic_info)
         session.clear()
@@ -829,7 +940,8 @@ def go_home():
 # ============================================
 
 @app.route('/api/get_all_topics', methods=['GET'])
-@csrf.exempt
+@csrf.exempt  # Exempted but protected by rate limiting
+@rate_limit(max_requests=30, window=60)  # Security Fix: Add rate limiting
 def get_all_topics_api():
     """API для получения всех тематик (ограничено 100 записями)"""
     try:
@@ -865,12 +977,32 @@ def get_all_topics_api():
 
 @app.route('/api/search_topic', methods=['POST'])
 @csrf.exempt  # Exempt from CSRF for API endpoint
+@rate_limit(max_requests=30, window=60)  # Security Fix: Add rate limiting
 def search_topic_api():
     """API для поиска тематики по описанию проблемы"""
     try:
+        # Security Fix: Validate Content-Type header
+        if request.content_type != 'application/json':
+            return jsonify({
+                'success': False,
+                'error': 'Content-Type must be application/json'
+            }), 400
+
         data = request.json
         query = data.get('query', '').strip()
         channel = data.get('channel', '').strip()  # Получаем выбранный канал
+
+        # Security Fix: Validate maximum query length
+        if len(query) > 500:
+            return jsonify({
+                'success': False,
+                'error': 'Запрос слишком длинный (максимум 500 символов)'
+            }), 400
+        if len(channel) > 200:
+            return jsonify({
+                'success': False,
+                'error': 'Название канала слишком длинное'
+            }), 400
 
         # Если query пустой, но канал выбран - возвращаем все тематики канала
         if not query and channel:
@@ -953,6 +1085,30 @@ def search_topic_api():
             'error': 'Внутренняя ошибка сервера'
         })
 
+# Обработчик для получения photo file_id (для админов)
+@bot.message_handler(content_types=['photo'])
+def handle_photo_upload(message):
+    """Получает photo file_id для добавления в мануалы"""
+    try:
+        # Берем самую большую версию фото
+        photo_id = message.photo[-1].file_id
+        file_size_mb = message.photo[-1].file_size / (1024 * 1024) if message.photo[-1].file_size else 0
+
+        response_text = (
+            f"📷 <b>Photo File ID получен!</b>\n\n"
+            f"<code>{photo_id}</code>\n\n"
+            f"📊 Размер: {file_size_mb:.2f} MB\n\n"
+            f"Скопируйте file_id выше и добавьте в manuals_data.json"
+        )
+
+        bot.reply_to(message, response_text, parse_mode='HTML')
+        print(f"✅ Photo file_id: {photo_id} (Size: {file_size_mb:.2f}MB)")
+
+    except Exception as e:
+        print(f"❌ Ошибка при обработке фото: {e}")
+        traceback.print_exc()
+        bot.reply_to(message, "❌ Ошибка при получении file_id фото")
+
 # Обработчик для получения video file_id (для админов)
 @bot.message_handler(content_types=['video'])
 def handle_video_upload(message):
@@ -999,7 +1155,8 @@ def handle_channel_messages(message):
                     message_id=original_message_id,
                     message_thread_id=IN_PROGRESS_THREAD_ID
                 )
-                safe_text = html_escape(message.text)
+                # Security Fix: Limit text length and sanitize
+                safe_text = html_escape(message.text[:1000])  # Limit to 1000 chars
                 bot.send_message(
                     TECH_SUPPORT_CHAT_ID,
                     f"💬 Статус по заявки на помощь: {safe_text}",
@@ -1019,6 +1176,12 @@ def handle_channel_messages(message):
 def admin_login():
     """Страница авторизации администратора"""
     if request.method == 'POST':
+        # Security Fix: Stricter rate limiting for login attempts to prevent brute force
+        ip = request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0].strip()
+        if not rate_limiter.check_login_attempt(ip, max_attempts=5, window=900):  # 5 attempts per 15 minutes
+            flash('Слишком много попыток входа. Попробуйте через 15 минут.')
+            return redirect(url_for('admin_login')), 429
+
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '')
 
@@ -1027,11 +1190,14 @@ def admin_login():
             flash('Некорректные учётные данные')
             return redirect(url_for('admin_login'))
 
-        if AdminAuth.verify_admin(username, password):
+        admin_data = AdminAuth.verify_admin(username, password)
+        if admin_data:
             session['admin_logged_in'] = True
             session['admin_username'] = username
+            session['admin_role'] = admin_data.get('role', ROLE_EDITOR)
             session['admin_token'] = AdminAuth.generate_session_token()
-            flash('Успешная авторизация')
+            session.permanent = True  # Use permanent session with timeout
+            flash(f'Успешная авторизация. Роль: {ROLE_NAMES.get(admin_data.get("role"), "Редактор")}')
             return redirect(url_for('admin_dashboard'))
         else:
             flash('Неверный логин или пароль')
@@ -1044,6 +1210,7 @@ def admin_logout():
     """Выход из админ-панели"""
     session.pop('admin_logged_in', None)
     session.pop('admin_username', None)
+    session.pop('admin_role', None)
     session.pop('admin_token', None)
     flash('Вы вышли из системы')
     return redirect(url_for('admin_login'))
@@ -1324,7 +1491,10 @@ def admin_upload_photo():
         flash('Некорректный индекс фото')
         return redirect(url_for('admin_dashboard'))
 
-    # Проверка файла
+    # Security Fix: Improved file upload validation
+    allowed_image_types = {'image/jpeg', 'image/png', 'image/gif', 'image/webp'}
+    max_file_size = 10 * 1024 * 1024  # 10 MB
+
     if 'photo' not in request.files:
         flash('Файл не был загружен')
         return redirect(request.url)
@@ -1334,9 +1504,14 @@ def admin_upload_photo():
         flash('Файл не выбран')
         return redirect(request.url)
 
-    # Проверка типа файла
-    if not file.content_type or not file.content_type.startswith('image/'):
-        flash('Можно загружать только изображения')
+    # Security Fix: Strict content type validation
+    if not file.content_type or file.content_type not in allowed_image_types:
+        flash('Можно загружать только изображения (JPEG, PNG, GIF, WebP)')
+        return redirect(request.url)
+
+    # Security Fix: Check content-length header first
+    if request.content_length and request.content_length > max_file_size:
+        flash('Файл слишком большой (максимум 10 МБ)')
         return redirect(request.url)
 
     # Проверка размера (максимум 10MB)
@@ -1344,7 +1519,7 @@ def admin_upload_photo():
     file_size = file.tell()
     file.seek(0)
 
-    if file_size > 10 * 1024 * 1024:
+    if file_size > max_file_size:
         flash('Файл слишком большой (максимум 10 МБ)')
         return redirect(request.url)
 
@@ -1460,7 +1635,10 @@ def admin_upload_video():
         flash('Некорректный ID подпроблемы')
         return redirect(url_for('admin_dashboard'))
 
-    # Проверка файла
+    # Security Fix: Improved video upload validation
+    allowed_video_types = {'video/mp4', 'video/mpeg', 'video/quicktime', 'video/x-msvideo', 'video/webm'}
+    max_file_size = 50 * 1024 * 1024  # 50 MB
+
     if 'video' not in request.files:
         flash('Файл не был загружен')
         return redirect(request.url)
@@ -1470,9 +1648,14 @@ def admin_upload_video():
         flash('Файл не выбран')
         return redirect(request.url)
 
-    # Проверка типа файла
-    if not file.content_type or not file.content_type.startswith('video/'):
-        flash('Можно загружать только видео')
+    # Security Fix: Strict content type validation
+    if not file.content_type or file.content_type not in allowed_video_types:
+        flash('Можно загружать только видео (MP4, MPEG, MOV, AVI, WebM)')
+        return redirect(request.url)
+
+    # Security Fix: Check content-length header first
+    if request.content_length and request.content_length > max_file_size:
+        flash('Файл слишком большой (максимум 50 МБ)')
         return redirect(request.url)
 
     # Проверка размера (максимум 50MB)
@@ -1480,7 +1663,7 @@ def admin_upload_video():
     file_size = file.tell()
     file.seek(0)
 
-    if file_size > 50 * 1024 * 1024:
+    if file_size > max_file_size:
         flash('Файл слишком большой (максимум 50 МБ)')
         return redirect(request.url)
 
@@ -1627,6 +1810,10 @@ def admin_list_topics():
 # ============================================
 # СТАТИСТИКА И АНАЛИТИКА
 # ============================================
+# TODO: МОДУЛЬ В РАЗРАБОТКЕ
+# Данный функционал находится в стадии разработки и тестирования
+# Требуется настройка PostgreSQL базы данных (см. переменные POSTGRES_* в .env)
+# В production окружении убедитесь в корректной настройке БД перед использованием
 
 @app.route('/admin/stats')
 @AdminAuth.login_required
@@ -1728,13 +1915,130 @@ def api_stats_timeline():
         }), 500
 
 
+# ============================================
+# УПРАВЛЕНИЕ УЧЕТНЫМИ ЗАПИСЯМИ АДМИНИСТРАТОРОВ
+# ============================================
+
+@app.route('/admin/users')
+@AdminAuth.super_admin_required
+def admin_users():
+    """Список всех администраторов (только для супер-админа)"""
+    admins = admins_manager.load_admins()
+    return render_template('admin_users.html', admins=admins, role_names=ROLE_NAMES)
+
+
+@app.route('/admin/users/add', methods=['GET', 'POST'])
+@AdminAuth.super_admin_required
+def admin_add_user():
+    """Добавление нового администратора"""
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '')
+        password_confirm = request.form.get('password_confirm', '')
+        role = request.form.get('role', ROLE_EDITOR)
+
+        # Валидация
+        if not username or not password:
+            flash('Логин и пароль обязательны для заполнения')
+            return redirect(url_for('admin_add_user'))
+
+        if password != password_confirm:
+            flash('Пароли не совпадают')
+            return redirect(url_for('admin_add_user'))
+
+        # Создаем администратора
+        created_by = session.get('admin_username', 'system')
+        result = admins_manager.create_admin(username, password, role, created_by)
+
+        if result['success']:
+            flash(f'Администратор {username} успешно создан')
+            return redirect(url_for('admin_users'))
+        else:
+            flash(f'Ошибка: {result.get("error", "Неизвестная ошибка")}')
+
+    return render_template('admin_add_user.html', roles={'super_admin': ROLE_SUPER_ADMIN, 'editor': ROLE_EDITOR}, role_names=ROLE_NAMES)
+
+
+@app.route('/admin/users/<string:username>/change_password', methods=['GET', 'POST'])
+@AdminAuth.super_admin_required
+def admin_change_user_password(username):
+    """Изменение пароля администратора"""
+    admin = admins_manager.get_admin_by_username(username)
+    if not admin:
+        flash('Администратор не найден')
+        return redirect(url_for('admin_users'))
+
+    if request.method == 'POST':
+        new_password = request.form.get('new_password', '')
+        password_confirm = request.form.get('password_confirm', '')
+
+        if not new_password:
+            flash('Новый пароль обязателен для заполнения')
+            return redirect(url_for('admin_change_user_password', username=username))
+
+        if new_password != password_confirm:
+            flash('Пароли не совпадают')
+            return redirect(url_for('admin_change_user_password', username=username))
+
+        result = admins_manager.update_admin_password(username, new_password)
+
+        if result['success']:
+            flash(f'Пароль для {username} успешно изменен')
+            return redirect(url_for('admin_users'))
+        else:
+            flash(f'Ошибка: {result.get("error", "Неизвестная ошибка")}')
+
+    return render_template('admin_change_password.html', admin=admin)
+
+
+@app.route('/admin/users/<string:username>/change_role', methods=['POST'])
+@AdminAuth.super_admin_required
+def admin_change_user_role(username):
+    """Изменение роли администратора"""
+    new_role = request.form.get('role', '')
+
+    if not new_role:
+        flash('Роль обязательна для заполнения')
+        return redirect(url_for('admin_users'))
+
+    result = admins_manager.change_admin_role(username, new_role)
+
+    if result['success']:
+        flash(f'Роль для {username} успешно изменена на {ROLE_NAMES.get(new_role, new_role)}')
+    else:
+        flash(f'Ошибка: {result.get("error", "Неизвестная ошибка")}')
+
+    return redirect(url_for('admin_users'))
+
+
+@app.route('/admin/users/<string:username>/delete', methods=['POST'])
+@AdminAuth.super_admin_required
+def admin_delete_user(username):
+    """Удаление администратора"""
+    # Защита от удаления самого себя
+    current_username = session.get('admin_username')
+    if username == current_username:
+        flash('Нельзя удалить самого себя')
+        return redirect(url_for('admin_users'))
+
+    result = admins_manager.delete_admin(username)
+
+    if result['success']:
+        flash(f'Администратор {username} успешно удален')
+    else:
+        flash(f'Ошибка: {result.get("error", "Неизвестная ошибка")}')
+
+    return redirect(url_for('admin_users'))
+
+
 # --- Запуск ---
 def run_flask():
     # Security: debug=False in production, host binding from env
     flask_host = os.getenv('FLASK_HOST', '0.0.0.0')
     flask_port = int(os.getenv('FLASK_PORT', '5003'))
-    flask_debug = os.getenv('FLASK_DEBUG', 'false').lower() == 'true'
-    app.run(host=flask_host, port=flask_port, debug=flask_debug)
+    flask_debug = IS_DEVELOPMENT  # Debug mode enabled in development
+    # use_reloader=False because Flask runs in a thread and reloader doesn't work in threads
+    app.run(host=flask_host, port=flask_port, debug=flask_debug, use_reloader=False)
 
 def run_bot():
     print("🤖 Telegram бот запущен и слушает обновления...")
@@ -1749,8 +2053,8 @@ if __name__ == '__main__':
     print("=" * 60)
     print("Запуск приложения Helper Bot")
     print("=" * 60)
-    # Security: Do not log sensitive tokens or credentials
-    print(f"Bot Token: ***REDACTED*** (length: {len(BOT_TOKEN) if BOT_TOKEN else 0})")
+    # Security Fix: Do not log any information about tokens
+    print("Bot Token: ***REDACTED***")
     print(f"Tech Support Chat ID: {TECH_SUPPORT_CHAT_ID}")
     print(f"Flask будет доступен на: http://0.0.0.0:5003")
     print(f"Telegram bot handlers: {len(bot.message_handlers)} message handlers")

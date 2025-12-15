@@ -30,14 +30,17 @@ KEYBOARD_LAYOUT_MAP = {
 SYNONYMS_DICT = {
     # Карты
     "карта": ["карточка", "картка", "карт", "картой", "карте", "карты", "кредитка", "дебетовая"],
-    "карточка": ["карта", "картка", "карт", "картой", "карте", "карты"],
-    "кредитка": ["карта", "кредитная карта", "кредитная"],
+    "карты": ["карта", "карточка", "картка", "карт", "картой", "карте", "кредитка", "дебетовая"],
+    "карточка": ["карта", "карты", "картка", "карт", "картой", "карте"],
+    "кредитка": ["карта", "карты", "кредитная карта", "кредитная"],
 
     # Платежи
     "платеж": ["оплата", "транзакция", "перевод", "платежа", "платежом", "платежи", "payment"],
-    "оплата": ["платеж", "транзакция", "перевод", "платежи"],
-    "перевод": ["платеж", "транзакция", "оплата", "переводы", "перевода"],
-    "транзакция": ["платеж", "оплата", "перевод", "операция"],
+    "платежи": ["платеж", "оплата", "транзакция", "перевод", "платежа", "платежом", "payment"],
+    "оплата": ["платеж", "платежи", "транзакция", "перевод"],
+    "перевод": ["платеж", "платежи", "транзакция", "оплата", "переводы", "перевода"],
+    "переводы": ["перевод", "платеж", "платежи", "транзакция", "оплата", "перевода"],
+    "транзакция": ["платеж", "платежи", "оплата", "перевод", "операция"],
 
     # Блокировка
     "блокировка": ["блок", "заблокировать", "заблокирована", "блокирован", "блокировали", "freeze"],
@@ -62,12 +65,15 @@ SYNONYMS_DICT = {
     "терминал": ["банкомат", "pos", "pos-терминал", "платежный терминал"],
 
     # Кредит
-    "кредит": ["займ", "ссуда", "loan", "кредита", "кредитом", "кредиты"],
-    "займ": ["кредит", "ссуда", "микрозайм"],
+    "кредит": ["займ", "ссуда", "loan", "кредита", "кредитом", "кредиты", "кредитов"],
+    "кредиты": ["кредит", "займ", "ссуда", "loan", "кредита", "кредитом", "кредитов"],
+    "кредитов": ["кредит", "кредиты", "займ", "ссуда", "кредита", "кредитом"],
+    "займ": ["кредит", "кредиты", "ссуда", "микрозайм"],
 
     # Депозит/вклад
     "вклад": ["депозит", "deposit", "вклада", "вкладом", "вклады"],
-    "депозит": ["вклад", "deposit", "депозита"],
+    "вклады": ["вклад", "депозит", "deposit", "вклада", "вкладом"],
+    "депозит": ["вклад", "вклады", "deposit", "депозита"],
 
     # Мобильный банк
     "мобильныйбанк": ["мобильный банк", "mobile bank", "приложение", "мобильное приложение", "моб банк"],
@@ -112,7 +118,13 @@ class TopicsManager:
         
     def _init_db(self):
         """Инициализация базы данных"""
-        self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
+        # Security Warning: check_same_thread=False is used for Flask multi-threading
+        # but is not recommended for production. Consider using PostgreSQL with proper
+        # connection pooling instead. SQLite with check_same_thread=False can have
+        # race conditions in concurrent environments.
+        # TODO: Implement thread-safe connection pooling or migrate to PostgreSQL
+        self.conn = sqlite3.connect(self.db_path, check_same_thread=False, timeout=10.0,
+                                   isolation_level='IMMEDIATE')
         self.conn.row_factory = sqlite3.Row
         cursor = self.conn.cursor()
         
@@ -243,24 +255,56 @@ class TopicsManager:
     def import_from_csv(self, file_path: str, encoding: str = 'utf-8') -> Dict:
         """
         Импорт тематик из CSV файла
-        
+
         Ожидаемые колонки: Канал, SR1, SR2, SR3, SR4, SR (или аналогичные)
         """
         try:
+            # Security Fix: Prevent path traversal attacks
+            import os
+            file_path = os.path.abspath(file_path)
+            # Ensure file is in current directory or subdirectory
+            current_dir = os.path.abspath('.')
+            if not file_path.startswith(current_dir):
+                return {"success": False, "error": "Invalid file path (path traversal detected)"}
+            # Check file exists and is actually a file
+            if not os.path.exists(file_path):
+                return {"success": False, "error": "File not found"}
+            if not os.path.isfile(file_path):
+                return {"success": False, "error": "Path is not a file"}
+            # Check file extension
+            if not file_path.lower().endswith('.csv'):
+                return {"success": False, "error": "File must be a CSV file"}
+
             df = pd.read_csv(file_path, encoding=encoding)
             return self._import_dataframe(df)
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
+
     def import_from_excel(self, file_path: str, sheet_name: int = 0) -> Dict:
         """
         Импорт тематик из Excel файла
-        
+
         Args:
             file_path: путь к файлу
             sheet_name: номер листа (0 - первый лист)
         """
         try:
+            # Security Fix: Prevent path traversal attacks
+            import os
+            file_path = os.path.abspath(file_path)
+            # Ensure file is in current directory or subdirectory
+            current_dir = os.path.abspath('.')
+            if not file_path.startswith(current_dir):
+                return {"success": False, "error": "Invalid file path (path traversal detected)"}
+            # Check file exists and is actually a file
+            if not os.path.exists(file_path):
+                return {"success": False, "error": "File not found"}
+            if not os.path.isfile(file_path):
+                return {"success": False, "error": "Path is not a file"}
+            # Check file extension
+            if not (file_path.lower().endswith('.xlsx') or file_path.lower().endswith('.xls')):
+                return {"success": False, "error": "File must be an Excel file (.xlsx or .xls)"}
+
             df = pd.read_excel(file_path, sheet_name=sheet_name)
             return self._import_dataframe(df)
         except Exception as e:
@@ -383,31 +427,45 @@ class TopicsManager:
     def update_topic(self, topic_id: int, **kwargs) -> Dict:
         """Обновление тематики"""
         try:
+            # Security Fix: Strict whitelist of allowed fields to prevent SQL injection
             allowed_fields = ['channel', 'sr1', 'sr2', 'sr3', 'sr4', 'full_topic']
             updates = {k: v for k, v in kwargs.items() if k in allowed_fields}
-            
+
             if not updates:
                 return {"success": False, "error": "Нет полей для обновления"}
-            
+
             # Получаем текущие данные
             cursor = self.conn.cursor()
             cursor.execute("SELECT * FROM topics WHERE id = ?", (topic_id,))
-            current = dict(cursor.fetchone())
-            
+            row = cursor.fetchone()
+            if not row:
+                return {"success": False, "error": "Тематика не найдена"}
+            current = dict(row)
+
             # Обновляем поля
             for key, value in updates.items():
                 current[key] = value
-            
+
             # Пересчитываем ключевые слова
             current['keywords'] = self._extract_keywords(
-                current['channel'], current['sr1'], current['sr2'], 
+                current['channel'], current['sr1'], current['sr2'],
                 current['sr3'], current['sr4'], current['full_topic']
             )
-            
-            # Сохраняем
-            set_clause = ', '.join([f"{k} = ?" for k in updates.keys()] + ['keywords = ?', 'updated_at = CURRENT_TIMESTAMP'])
-            values = list(updates.values()) + [current['keywords'], topic_id]
-            
+
+            # Security Fix: Build SQL safely with whitelisted fields only
+            # We know all keys in updates are from allowed_fields, so this is safe
+            set_parts = []
+            values = []
+            for field in allowed_fields:
+                if field in updates:
+                    set_parts.append(f"{field} = ?")
+                    values.append(updates[field])
+
+            set_parts.extend(['keywords = ?', 'updated_at = CURRENT_TIMESTAMP'])
+            values.append(current['keywords'])
+            values.append(topic_id)
+
+            set_clause = ', '.join(set_parts)
             cursor.execute(f"UPDATE topics SET {set_clause} WHERE id = ?", values)
             self.conn.commit()
             
@@ -452,6 +510,16 @@ class TopicsManager:
 
         # Извлекаем ключевые слова из запроса с учетом синонимов
         query_keywords = self._expand_query_with_synonyms(query)
+
+        # Security Fix: Limit number of keywords to prevent SQL injection DoS
+        # Validate keywords contain only safe characters
+        safe_keywords = []
+        for kw in list(query_keywords)[:30]:  # Limit to 30 keywords max
+            # Allow only alphanumeric, spaces, and hyphens (max 100 chars per keyword)
+            if re.match(r'^[\w\s-]{1,100}$', kw, re.UNICODE):
+                safe_keywords.append(kw)
+
+        query_keywords = safe_keywords
 
         # Быстрый поиск по ключевым словам
         cursor = self.conn.cursor()
@@ -550,9 +618,13 @@ class TopicsManager:
         cursor = self.conn.cursor()
         query = "SELECT * FROM topics ORDER BY channel, sr1, sr2, sr3, sr4"
         if limit:
-            query += f" LIMIT {limit}"
-
-        cursor.execute(query)
+            # Fix SQL Injection: use parameterized query
+            if not isinstance(limit, int) or limit < 1:
+                limit = 100
+            query += " LIMIT ?"
+            cursor.execute(query, (limit,))
+        else:
+            cursor.execute(query)
         return [dict(row) for row in cursor.fetchall()]
 
     def get_topics_by_channel(self, channel: str, limit: int = None) -> List[Dict]:
@@ -560,9 +632,13 @@ class TopicsManager:
         cursor = self.conn.cursor()
         query = "SELECT * FROM topics WHERE channel = ? ORDER BY sr1, sr2, sr3, sr4"
         if limit:
-            query += f" LIMIT {limit}"
-
-        cursor.execute(query, (channel,))
+            # Fix SQL Injection: use parameterized query
+            if not isinstance(limit, int) or limit < 1:
+                limit = 100
+            query += " LIMIT ?"
+            cursor.execute(query, (channel, limit))
+        else:
+            cursor.execute(query, (channel,))
         return [dict(row) for row in cursor.fetchall()]
 
     def get_all_channels(self) -> List[str]:

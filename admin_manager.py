@@ -320,35 +320,250 @@ class AdminManager:
         return self.save_manuals(manuals)
 
 
+# Роли администраторов
+ROLE_SUPER_ADMIN = 'super_admin'
+ROLE_EDITOR = 'editor'
+
+ROLE_NAMES = {
+    ROLE_SUPER_ADMIN: 'Супер-администратор',
+    ROLE_EDITOR: 'Редактор'
+}
+
+
+class AdminsManager:
+    """Управление учетными записями администраторов"""
+
+    def __init__(self, admins_file: str = 'admins.json'):
+        self.admins_file = admins_file
+        self._ensure_file_exists()
+
+    def _ensure_file_exists(self) -> None:
+        """Создаёт файл с учетными записями если его нет"""
+        if not os.path.exists(self.admins_file):
+            # Создаем файл с пустым списком администраторов
+            with open(self.admins_file, 'w', encoding='utf-8') as f:
+                json.dump({"admins": []}, f, ensure_ascii=False, indent=2)
+
+    def load_admins(self) -> List[Dict[str, Any]]:
+        """Загружает список администраторов из файла"""
+        try:
+            with open(self.admins_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                return data.get('admins', [])
+        except (json.JSONDecodeError, IOError) as e:
+            print(f"Ошибка загрузки администраторов: {e}")
+            return []
+
+    def save_admins(self, admins: List[Dict[str, Any]]) -> bool:
+        """Сохраняет список администраторов в файл"""
+        try:
+            if not isinstance(admins, list):
+                raise ValueError("Admins must be a list")
+
+            with open(self.admins_file, 'w', encoding='utf-8') as f:
+                json.dump({"admins": admins}, f, ensure_ascii=False, indent=2)
+            return True
+        except (IOError, ValueError) as e:
+            print(f"Ошибка сохранения администраторов: {e}")
+            return False
+
+    @staticmethod
+    def validate_username(username: str) -> bool:
+        """Валидация имени пользователя (только латиница, цифры, подчеркивание)"""
+        if not isinstance(username, str):
+            return False
+        return bool(re.match(r'^[a-zA-Z0-9_]{3,30}$', username))
+
+    @staticmethod
+    def validate_role(role: str) -> bool:
+        """Валидация роли"""
+        return role in [ROLE_SUPER_ADMIN, ROLE_EDITOR]
+
+    def get_admin_by_username(self, username: str) -> Optional[Dict[str, Any]]:
+        """Получить администратора по username"""
+        if not self.validate_username(username):
+            return None
+
+        admins = self.load_admins()
+        for admin in admins:
+            if admin.get('username') == username:
+                return admin
+        return None
+
+    def create_admin(self, username: str, password: str, role: str, created_by: str = 'system') -> Dict[str, Any]:
+        """Создать нового администратора"""
+        # Валидация
+        if not self.validate_username(username):
+            return {'success': False, 'error': 'Некорректное имя пользователя'}
+
+        if not self.validate_role(role):
+            return {'success': False, 'error': 'Некорректная роль'}
+
+        if len(password) < 6 or len(password) > 128:
+            return {'success': False, 'error': 'Пароль должен быть от 6 до 128 символов'}
+
+        # Проверяем, что администратор с таким именем не существует
+        if self.get_admin_by_username(username):
+            return {'success': False, 'error': 'Администратор с таким именем уже существует'}
+
+        admins = self.load_admins()
+
+        # Создаем нового администратора
+        new_admin = {
+            'username': username,
+            'password_hash': generate_password_hash(password),
+            'role': role,
+            'created_by': created_by,
+            'created_at': self._get_current_timestamp(),
+            'active': True
+        }
+
+        admins.append(new_admin)
+
+        if self.save_admins(admins):
+            return {'success': True, 'username': username}
+        else:
+            return {'success': False, 'error': 'Ошибка при сохранении'}
+
+    def update_admin_password(self, username: str, new_password: str) -> Dict[str, Any]:
+        """Обновить пароль администратора"""
+        if not self.validate_username(username):
+            return {'success': False, 'error': 'Некорректное имя пользователя'}
+
+        if len(new_password) < 6 or len(new_password) > 128:
+            return {'success': False, 'error': 'Пароль должен быть от 6 до 128 символов'}
+
+        admins = self.load_admins()
+        admin_found = False
+
+        for admin in admins:
+            if admin.get('username') == username:
+                admin['password_hash'] = generate_password_hash(new_password)
+                admin_found = True
+                break
+
+        if not admin_found:
+            return {'success': False, 'error': 'Администратор не найден'}
+
+        if self.save_admins(admins):
+            return {'success': True}
+        else:
+            return {'success': False, 'error': 'Ошибка при сохранении'}
+
+    def delete_admin(self, username: str) -> Dict[str, Any]:
+        """Удалить администратора"""
+        if not self.validate_username(username):
+            return {'success': False, 'error': 'Некорректное имя пользователя'}
+
+        admins = self.load_admins()
+
+        # Проверяем, что это не последний супер-админ
+        super_admins = [a for a in admins if a.get('role') == ROLE_SUPER_ADMIN]
+        if len(super_admins) == 1 and super_admins[0].get('username') == username:
+            return {'success': False, 'error': 'Нельзя удалить последнего супер-администратора'}
+
+        # Удаляем администратора
+        admins = [a for a in admins if a.get('username') != username]
+
+        if self.save_admins(admins):
+            return {'success': True}
+        else:
+            return {'success': False, 'error': 'Ошибка при сохранении'}
+
+    def change_admin_role(self, username: str, new_role: str) -> Dict[str, Any]:
+        """Изменить роль администратора"""
+        if not self.validate_username(username):
+            return {'success': False, 'error': 'Некорректное имя пользователя'}
+
+        if not self.validate_role(new_role):
+            return {'success': False, 'error': 'Некорректная роль'}
+
+        admins = self.load_admins()
+
+        # Проверяем, что это не последний супер-админ
+        admin_to_change = None
+        super_admins = [a for a in admins if a.get('role') == ROLE_SUPER_ADMIN]
+
+        for admin in admins:
+            if admin.get('username') == username:
+                admin_to_change = admin
+                break
+
+        if not admin_to_change:
+            return {'success': False, 'error': 'Администратор не найден'}
+
+        # Если пытаемся понизить роль последнего супер-админа
+        if (admin_to_change.get('role') == ROLE_SUPER_ADMIN and
+            new_role != ROLE_SUPER_ADMIN and
+            len(super_admins) == 1):
+            return {'success': False, 'error': 'Нельзя понизить роль последнего супер-администратора'}
+
+        # Изменяем роль
+        admin_to_change['role'] = new_role
+
+        if self.save_admins(admins):
+            return {'success': True}
+        else:
+            return {'success': False, 'error': 'Ошибка при сохранении'}
+
+    @staticmethod
+    def _get_current_timestamp() -> str:
+        """Получить текущую временную метку"""
+        from datetime import datetime
+        return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+
 class AdminAuth:
     """Безопасная авторизация администраторов"""
 
     @staticmethod
-    def _get_admin_credentials() -> Dict[str, str]:
-        """Получает учетные данные администраторов из переменных окружения"""
+    def _get_admin_credentials_from_env() -> Dict[str, Dict[str, str]]:
+        """Получает учетные данные администраторов из переменных окружения (для обратной совместимости)"""
         admin_username = os.getenv('ADMIN_USERNAME', '')
         admin_password_hash = os.getenv('ADMIN_PASSWORD_HASH', '')
 
         if admin_username and admin_password_hash:
-            return {admin_username: admin_password_hash}
+            return {
+                admin_username: {
+                    'password_hash': admin_password_hash,
+                    'role': ROLE_SUPER_ADMIN  # По умолчанию супер-админ
+                }
+            }
         return {}
 
     @staticmethod
-    def verify_admin(username: str, password: str) -> bool:
-        """Проверка учётных данных администратора"""
+    def verify_admin(username: str, password: str) -> Optional[Dict[str, Any]]:
+        """Проверка учётных данных администратора. Возвращает данные администратора или None"""
         if not isinstance(username, str) or not isinstance(password, str):
-            return False
+            return None
 
         # Ограничение длины для предотвращения DoS
         if len(username) > 50 or len(password) > 128:
-            return False
+            return None
 
-        credentials = AdminAuth._get_admin_credentials()
-        if username not in credentials:
-            return False
+        # Сначала проверяем в файле admins.json
+        admins_mgr = AdminsManager()
+        admin = admins_mgr.get_admin_by_username(username)
 
-        hashed = credentials[username]
-        return check_password_hash(hashed, password)
+        if admin and admin.get('active', True):
+            password_hash = admin.get('password_hash', '')
+            if check_password_hash(password_hash, password):
+                return {
+                    'username': username,
+                    'role': admin.get('role', ROLE_EDITOR)
+                }
+
+        # Если не найден в файле, проверяем в переменных окружения (обратная совместимость)
+        env_credentials = AdminAuth._get_admin_credentials_from_env()
+        if username in env_credentials:
+            hashed = env_credentials[username]['password_hash']
+            if check_password_hash(hashed, password):
+                return {
+                    'username': username,
+                    'role': env_credentials[username]['role']
+                }
+
+        return None
 
     @staticmethod
     def login_required(f):
@@ -362,10 +577,46 @@ class AdminAuth:
         return decorated_function
 
     @staticmethod
+    def super_admin_required(f):
+        """Декоратор для защиты маршрутов, доступных только супер-администраторам"""
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if not session.get('admin_logged_in'):
+                flash('Требуется авторизация')
+                return redirect(url_for('admin_login'))
+
+            admin_role = session.get('admin_role')
+            if admin_role != ROLE_SUPER_ADMIN:
+                flash('Доступ запрещен. Требуются права супер-администратора.')
+                return redirect(url_for('admin_dashboard'))
+
+            return f(*args, **kwargs)
+        return decorated_function
+
+    @staticmethod
+    def has_permission(permission: str) -> bool:
+        """Проверить, есть ли у текущего администратора определенное разрешение"""
+        if not session.get('admin_logged_in'):
+            return False
+
+        admin_role = session.get('admin_role')
+
+        # Супер-админ может всё
+        if admin_role == ROLE_SUPER_ADMIN:
+            return True
+
+        # Редактор может редактировать контент
+        if admin_role == ROLE_EDITOR:
+            return permission in ['edit_manuals', 'edit_topics', 'view_stats']
+
+        return False
+
+    @staticmethod
     def generate_session_token() -> str:
         """Генерация безопасного токена сессии"""
         return secrets.token_urlsafe(32)
 
 
-# Глобальный экземпляр
+# Глобальные экземпляры
 admin_manager = AdminManager()
+admins_manager = AdminsManager()
