@@ -1,0 +1,11 @@
+bind = "0.0.0.0:5000"
+workers = 2 
+worker_class = "gthread"
+threads = 4 
+timeout = 180 
+keepalive = 5
+loglevel = "info"
+accesslog = "/home/fudo/gunicorn_access.log"
+errorlog = "/home/fudo/gunicorn_error.log"
+pidfile = "/home/fudo/gunicorn.pid"
+preload_app = True

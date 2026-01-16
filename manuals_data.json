@@ -5,10 +5,6 @@
       "subproblems": {
         "1.1": {
           "title": "Заполнилась память",
-          "video": {
-            "id": "BAACAgIAAxkBAAIKeWkPK-xwmW5aQqkeYOGtHPeNMCS7AALofwACQtR4SP7CmzLxLzl4NgQ",
-            "caption": "Видео-инструкция: Как очистить переполненную память в Outlook"
-          },
           "photos": [
             {
               "id": "AgACAgIAAyEGAAS2wnenAAICpWklfZbrfvcQfPunS8cBUpClLqlZAAKaDWsbGPIpScBSx-oESUUNAQADAgADeAADNgQ",
@@ -23,7 +19,7 @@
               "caption": "Открываем Outlook, далее нажимаем «Файл»"
             },
             {
-              "id": "AgACAgIAAxkBAAIBnGijBlGLcH9BZaBEbm0IpW_1wOk8AAIU9DEb1IEYSYZCt5oi-tJ8AQADAgADeQADNgQ",
+              "id": null,
               "caption": "3. Выбираем «Удалять старые элементы» или «Архивировать» (в старой версии «Архивация»)."
             },
             {
@@ -34,7 +30,11 @@
               "id": "AgACAgIAAyEFAASacHO5AAICumioGss7AurZHYCnFkh0CF3Oy-0vAAL39TEb1phBSaXZZmMPopEmAQADAgADeQADNgQ",
               "caption": "5. Как проверить, идет ли архивация?\r\nВ главном меню, снизу будет идти загрузка. После завершения архивации перезапустите Outlook."
             }
-          ]
+          ],
+          "video": {
+            "id": "video_1_1.1_03e51625.MOV",
+            "caption": "Архивация почты Outlook 2016."
+          }
         },
         "1.2": {
           "title": "Не открывается OutLook",
@@ -91,7 +91,11 @@
               "id": "AgACAgIAAyEFAASZzkr9AAOAaKQEfchBbtFTbmX5IknPZCxC73IAApYAATIbYCsgSUTR08yC3LRUAQADAgADeAADNgQ",
               "caption": "13. Далее нажимаем сперва на “Применить”, затем на “Ок”."
             }
-          ]
+          ],
+          "video": {
+            "id": "video_1_1.2_9570b50f.MOV",
+            "caption": "Настройка почты Outlook 2016."
+          }
         },
         "1.3": {
           "title": "Письма в Исходящих",
@@ -148,7 +152,11 @@
               "id": "AgACAgIAAyEFAASZzkr9AAOAaKQEfchBbtFTbmX5IknPZCxC73IAApYAATIbYCsgSUTR08yC3LRUAQADAgADeAADNgQ",
               "caption": "13. Далее нажимаем сперва на “Применить”, затем на “Ок”."
             }
-          ]
+          ],
+          "video": {
+            "id": "video_1_1.3_1d8420ed.MOV",
+            "caption": "Настройка почты Outlook 2021."
+          }
         }
       }
     },
@@ -215,7 +223,11 @@
               "id": "AgACAgIAAxkBAAICemikEBopyPZCvSwzpeMLB7zDlbS5AAJZ7zEbDRsgSS7n6NsyF3F0AQADAgADeQADNgQ",
               "caption": "9. При нажатии на предыдущую кнопку откроется сайт «Тонкий VISA». Можете прописать логин и пароль с MWiki."
             }
-          ]
+          ],
+          "video": {
+            "id": "video_2_2.1_8f70f359.MOV",
+            "caption": "Настройка \"Тонкий Виза\" на новой версии Firefox."
+          }
         },
         "2.2": {
           "title": "Тонкий на старом Firefox",
@@ -256,7 +268,11 @@
               "id": "AgACAgIAAxkBAAIDv2ikTfe2FkkGCXMcTp-Xuh6snPDWAAK58DEbDRsgSUMf7jIkausdAQADAgADeAADNgQ",
               "caption": "9. Далее откроется сайт."
             }
-          ]
+          ],
+          "video": {
+            "id": "video_2_2.2_316223b8.MOV",
+            "caption": "Настройка \"Тонкий Виза\" на старой версии Firefox."
+          }
         }
       }
     },
@@ -294,7 +310,11 @@
               "id": "AgACAgIAAyEFAASacHO5AAICjWilWIVoOsm_b31U7IZXshFtVL0iAAIF-jEbXyspSbcIFl0oYG_RAQADAgADeAADNgQ",
               "caption": "5. Подтверждаем. В появившемся окне введите ваш пароль для учетной записи Windows."
             }
-          ]
+          ],
+          "video": {
+            "id": "video_3_3.1_a94b5974.MOV",
+            "caption": "Сброс Cisco Jabber."
+          }
         },
         "3.2": {
           "title": "Настройка наушников",
@@ -343,7 +363,11 @@
               "id": "AgACAgIAAyEFAASacHO5AAICo2ilWMJR80CsRtSoERwIN69R4IHWAAIS-jEbXyspSXgyRbbkdc5CAQADAgADeQADNgQ",
               "caption": "11. Если значок такой, как на картинке, значит, микрофон выключен. Для его включения просто нажмите на кнопку, чтобы он стал таким: 🔊. После этого микрофон должен заработать."
             }
-          ]
+          ],
+          "video": {
+            "id": "video_3_3.2_85f6eab6.MOV",
+            "caption": "Настройка наушников."
+          }
         }
       }
     },
@@ -390,7 +414,11 @@
               "id": "AgACAgIAAyEFAASacHO5AAICdWilVaCHuOCCIQtBaDbVawsfnXYYAALm-TEbXyspSQEnOSk_93BGAQADAgADeAADNgQ",
               "caption": "Шаг 6. Далее вставляем скопированный текст с MWiki в поле, как указано на скриншоте, и обязательно нажимаем на кнопку «Сохранить»."
             }
-          ]
+          ],
+          "video": {
+            "id": "video_4_4.1_06d6ea35.MOV",
+            "caption": "Настройка прокси-сервера на Windows 10."
+          }
         },
         "4.2": {
           "title": "Windows 11",
@@ -415,7 +443,11 @@
               "id": "AgACAgIAAyEFAASacHO5AAICfWilVokoIedagw1YOGHoIb-TsRNGAALr-TEbXyspST-kMmwB3KoRAQADAgADeAADNgQ",
               "caption": "Шаг 5. Переключить ползунок «Использовать прокси-сервер» на «Вкл.» и прописать IP адрес: 172.23.182.133, порт: 3128.\n* Для вставки текста используйте: Ctrl + V"
             }
-          ]
+          ],
+          "video": {
+            "id": "video_4_4.2_738e3c26.MOV",
+            "caption": "Настройка прокси-сервера на Windows 11."
+          }
         }
       }
     },
