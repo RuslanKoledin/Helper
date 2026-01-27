@@ -264,15 +264,20 @@ def send_ticket(problem, screenshots=None, topic_info=None):
     user_info = session.get('user_info', {})
     department = user_info.get('department', 'Неизвестно')
     name = user_info.get('name', 'Неизвестно')
-    workplace = user_info.get('workplace', 'Неизвестно')
+    workplace = user_info.get('workplace', '')
 
+    # Формируем сообщение
     support_message = (
         f"🚨 **НОВАЯ ЗАЯВКА** 🚨\n"
         f"Отдел: {department}\n"
         f"Имя: {name}\n"
-        f"Рабочее место: {workplace}\n"
-        f"Проблема: {problem}\n"
     )
+
+    # Добавляем рабочее место если оно указано
+    if workplace:
+        support_message += f"Рабочее место: {workplace}\n"
+
+    support_message += f"Проблема: {problem}\n"
 
     # Тематика НЕ отправляется в Telegram - только для маркировки в CRM
     # topic_info используется только на стороне веб-приложения
@@ -557,68 +562,28 @@ def show_manual_steps():
 
 @app.route('/')
 def index():
-    session.clear()
-    departments = [
-        "Отдел по работе с социальными сетями",
-        "Отдел аналитики, отчетности и мониторинга показателей",
-        "Отдел обучения",
-        "Отдел сопровождения обслуживания (ГОПЗ)",
-        "Отдел по работе с обратной связью",
-        "Отдел обслуживания юридических лиц",
-        "Группа по развитию клиентов",
-        "Отдел онлайн обращений",
-        "Отдел входящей линии",
-        "Группа по предотвращению мошенничества (Антифрод)",
-        "Отдел клиентским опытом",
-        "Отдел поддержки обслуживания",
-        "Отдел обслуживания специальных проектов",
-        "Управление клиентского опыта, инцидент-менеджмента и пользовательского тестирования",
-    ]
-    departments.sort()
-    return render_template('index.html', departments=departments)
+    """Главная страница - редирект на логин если не авторизован"""
+    if 'user_info' not in session:
+        return redirect(url_for('user_login'))
+    return redirect(url_for('choose_help_type'))
 
 @app.route('/submit_user_info', methods=['POST'])
 def submit_user_info():
-    try:
-        department = request.form.get('department', '').strip()
-        name = request.form.get('name', '').strip()
-        workplace = request.form.get('workplace', '').strip()
-
-        # ✅ Проверка имени: только буквы и пробелы, макс. 20 символов
-        if not re.fullmatch(r"[A-Za-zА-Яа-яЁё\s]{1,20}", name):
-            flash("Имя должно содержать только буквы (макс. 20 символов)")
-            return redirect(url_for("index"))
-
-        # ✅ Проверка рабочего места: только цифры, макс. 4 символа
-        if not re.fullmatch(r"\d{1,4}", workplace):
-            flash("Рабочее место должно содержать только цифры (макс. 4)")
-            return redirect(url_for("index"))
-
-        # Если всё ок — сохраняем в сессию
-        session['user_info'] = {
-            'department': department,
-            'name': name,
-            'workplace': workplace
-        }
-
-        return redirect(url_for('choose_help_type'))
-
-    except werkzeug.routing.exceptions.BuildError as e:
-        print(f"Ошибка построения URL: {e}")
-        return "Произошла ошибка. Пожалуйста, попробуйте еще раз."
+    """Устаревший маршрут - теперь используется AD аутентификация"""
+    return redirect(url_for('user_login'))
 
 @app.route('/choose_help_type')
 def choose_help_type():
-    """Страница выбора типа помощи после регистрации"""
-    if 'user_info' not in session:
-        return redirect(url_for('index'))
+    """Страница выбора типа помощи после авторизации"""
+    if 'user_info' not in session or not session.get('authenticated'):
+        return redirect(url_for('user_login'))
     return render_template('choose_help_type.html', user_info=session['user_info'])
 
 @app.route('/search_topics')
 def search_topics():
-    """Страница поиска тематик обращений"""
-    if 'user_info' not in session:
-        return redirect(url_for('index'))
+    """Страница поиска тематик обращений - workplace не требуется"""
+    if 'user_info' not in session or not session.get('authenticated'):
+        return redirect(url_for('user_login'))
 
     # Получаем список каналов из БД
     channels = tm.get_all_channels()
@@ -627,8 +592,8 @@ def search_topics():
 @app.route('/submit_selected_topic', methods=['POST'])
 def submit_selected_topic():
     """Обработка выбранной тематики и отправка в Telegram"""
-    if 'user_info' not in session:
-        return redirect(url_for('index'))
+    if 'user_info' not in session or not session.get('authenticated'):
+        return redirect(url_for('user_login'))
 
     try:
         selected_topic_id = request.form.get('selected_topic_id')
@@ -660,17 +625,29 @@ def submit_selected_topic():
 
 @app.route('/problems')
 def show_problems():
-    if 'user_info' not in session:
-        return redirect(url_for('index'))
+    """Страница мануалов - требует указания рабочего места"""
+    if 'user_info' not in session or not session.get('authenticated'):
+        return redirect(url_for('user_login'))
+
+    # Проверяем наличие workplace, если нет - запрашиваем
+    if not session['user_info'].get('workplace'):
+        session['next_after_workplace'] = 'show_problems'
+        return redirect(url_for('enter_workplace'))
+
     # Загружаем актуальные мануалы из JSON
     return render_template('problems.html', manuals=load_manuals())
 
 @app.route('/select_problem/<string:problem_id>')
 def select_problem(problem_id):
     # Проверяем авторизацию по сессии
-    if 'user_info' not in session:
-        print("[select_problem] No user_info in session, redirecting to index")
-        return redirect(url_for('index'))
+    if 'user_info' not in session or not session.get('authenticated'):
+        print("[select_problem] No user_info in session, redirecting to login")
+        return redirect(url_for('user_login'))
+
+    # Проверяем наличие workplace
+    if not session['user_info'].get('workplace'):
+        session['next_after_workplace'] = 'show_problems'
+        return redirect(url_for('enter_workplace'))
 
     # --- Проверяем корректность problem_id ---
     if not re.match(r'^\d+$', problem_id):
@@ -1195,6 +1172,72 @@ def handle_channel_messages(message):
 # ============================================
 # АДМИН-ПАНЕЛЬ
 # ============================================
+
+@app.route('/login', methods=['GET', 'POST'])
+def user_login():
+    """Страница входа для всех пользователей через AD"""
+    if request.method == 'POST':
+        # Rate limiting для защиты от brute force
+        ip = request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0].strip()
+        if not rate_limiter.check_login_attempt(ip, max_attempts=5, window=900):
+            flash('Слишком много попыток входа. Попробуйте через 15 минут.')
+            return redirect(url_for('user_login')), 429
+
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '')
+
+        # Валидация длины
+        if len(username) > 100 or len(password) > 128:
+            flash('Некорректные учётные данные')
+            return redirect(url_for('user_login'))
+
+        # Аутентификация через AD
+        from ad_auth import ad_auth
+        ad_result = ad_auth.verify_credentials(username, password)
+
+        if ad_result:
+            # Успешная аутентификация - сохраняем данные в сессию
+            session['user_info'] = {
+                'username': ad_result.get('username', username),
+                'name': ad_result.get('display_name', username),
+                'department': ad_result.get('department', ''),
+                'email': ad_result.get('email', ''),
+                'workplace': ''  # Будет заполнено позже при необходимости
+            }
+            session['authenticated'] = True
+            session.permanent = True
+
+            # Переходим к выбору типа помощи
+            return redirect(url_for('choose_help_type'))
+        else:
+            flash('Неверный логин или пароль')
+            return redirect(url_for('user_login'))
+
+    return render_template('user_login.html')
+
+@app.route('/enter_workplace', methods=['GET', 'POST'])
+def enter_workplace():
+    """Страница ввода рабочего места (только для работы с мануалами)"""
+    if 'user_info' not in session or not session.get('authenticated'):
+        return redirect(url_for('user_login'))
+
+    if request.method == 'POST':
+        workplace = request.form.get('workplace', '').strip()
+
+        # Валидация рабочего места
+        if not re.fullmatch(r".{1,50}", workplace):
+            flash('Некорректное рабочее место')
+            return redirect(url_for('enter_workplace'))
+
+        # Обновляем workplace в сессии
+        session['user_info']['workplace'] = workplace
+        session.modified = True
+
+        # Возвращаемся туда, откуда пришли (или на главную)
+        next_page = session.pop('next_after_workplace', 'choose_help_type')
+        return redirect(url_for(next_page))
+
+    return render_template('enter_workplace.html', user_info=session['user_info'])
 
 @app.route('/admin/login', methods=['GET', 'POST'])
 def admin_login():

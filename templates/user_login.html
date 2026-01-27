@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Вход - Помощник МБанк</title>
+    <style>
+        :root {
+            --bg: #0c0c0c;
+            --card: #1a1a1a;
+            --card2: #202020;
+            --text: #e8e8e8;
+            --muted: #a8a8a8;
+            --border: #2a2a2a;
+            --green: #00a651;
+            --greenHover: #009448;
+            --yellow: #f2b705;
+            --teal: #2bb6b6;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: "Segoe UI", system-ui, -apple-system, Arial;
+            background: var(--bg);
+            display: grid;
+            place-items: center;
+            min-height: 100vh;
+            padding: 24px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .login-container {
+            width: 380px;
+            max-width: 92vw;
+            border-radius: 14px;
+            background: linear-gradient(180deg, var(--card), var(--card2));
+            border: 1px solid #151515;
+            box-shadow: 0 18px 50px rgba(0, 0, 0, .6);
+            padding: 20px 22px 22px;
+            position: relative;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            margin-bottom: 8px;
+        }
+
+        .logo-wrap {
+            height: 54px;
+            display: flex;
+            align-items: center;
+        }
+
+        .logo-text {
+            display: inline-flex;
+            align-items: center;
+            font-weight: 800;
+            font-size: 34px;
+            letter-spacing: -0.2px;
+            background: linear-gradient(90deg, #00d4aa 0%, #00a651 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+
+        h2 {
+            margin: 6px 0 6px;
+            color: var(--text);
+            font-size: 20px;
+            font-weight: 700;
+        }
+
+        .subtitle {
+            color: var(--muted);
+            font-size: 13px;
+            margin-bottom: 18px;
+        }
+
+        .form-group {
+            margin-bottom: 12px;
+        }
+
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+
+        input[type="text"],
+        input[type="password"] {
+            width: 100%;
+            height: 48px;
+            padding: 0 16px;
+            border: 1px solid #2a2a2a;
+            background: #1a1a1a;
+            color: #7a7a7a;
+            border-radius: 10px;
+            font-size: 15px;
+            outline: none;
+            transition: border .15s ease, background .15s ease, color .15s ease;
+        }
+
+        input::placeholder {
+            color: #6a6a6a;
+        }
+
+        input[type="text"]:focus,
+        input[type="password"]:focus {
+            border-color: rgba(0, 166, 81, .5);
+            background: #202020;
+            color: var(--text);
+        }
+
+        .password-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .password-wrapper input {
+            padding-left: 16px;
+            padding-right: 48px;
+        }
+
+        .toggle-password {
+            position: absolute;
+            right: 12px;
+            background: transparent;
+            border: none;
+            color: rgba(122, 122, 122, .85);
+            cursor: pointer;
+            font-size: 16px;
+            line-height: 1;
+            padding: 6px;
+        }
+
+        .toggle-password svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        .btn-login {
+            margin-top: 20px;
+            width: 100%;
+            height: 48px;
+            border-radius: 10px;
+            border: none;
+            background: var(--green);
+            color: #041a0f;
+            font-weight: 700;
+            font-size: 15px;
+            cursor: pointer;
+            transition: transform .06s ease, background .15s ease;
+        }
+
+        .btn-login:hover {
+            background: var(--greenHover);
+        }
+
+        .btn-login:active {
+            transform: translateY(1px);
+        }
+
+        .btn-login:disabled {
+            background: rgba(0, 195, 106, 0.35);
+            color: rgba(6, 17, 11, 0.55);
+            cursor: not-allowed;
+        }
+
+        .error-modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 50;
+        }
+
+        .error-card {
+            width: 320px;
+            max-width: 88vw;
+            background: #1f1f1f;
+            border: 1px solid #2c2c2c;
+            border-radius: 12px;
+            box-shadow: 0 16px 50px rgba(0, 0, 0, 0.6);
+            padding: 16px;
+            color: #eaeaea;
+        }
+
+        .error-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 700;
+            font-size: 14px;
+            margin-bottom: 6px;
+        }
+
+        .error-icon {
+            width: 22px;
+            height: 22px;
+            border-radius: 999px;
+            background: #ff4d4f;
+            color: #0b0b0b;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 14px;
+        }
+
+        .error-text {
+            color: #bfbfbf;
+            font-size: 12px;
+        }
+
+        .error-actions {
+            margin-top: 12px;
+            display: flex;
+            justify-content: flex-end;
+        }
+
+        .error-btn {
+            background: #2b6de5;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            padding: 6px 14px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="logo">
+            <div class="logo-wrap">
+                <span class="logo-text">МБанк</span>
+            </div>
+        </div>
+
+        <h2>Вход в систему помощи</h2>
+        <p class="subtitle">Введите логин и пароль от Windows</p>
+
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                <div class="error-modal" id="error-modal">
+                    <div class="error-card" role="dialog" aria-modal="true" aria-labelledby="error-title" aria-describedby="error-text">
+                        <div class="error-title" id="error-title">
+                            <span class="error-icon">×</span>
+                            Произошла ошибка
+                        </div>
+                        <div class="error-text" id="error-text">
+                            {{ messages[-1] }}
+                        </div>
+                        <div class="error-actions">
+                            <button type="button" class="error-btn" onclick="closeErrorModal()">Ок</button>
+                        </div>
+                    </div>
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        <form method="POST" action="{{ url_for('user_login') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <div class="form-group">
+                <label class="sr-only" for="username">Учетная запись</label>
+                <input type="text" id="username" name="username" required maxlength="100" autocomplete="username" placeholder="Учетная запись (a_petrov)">
+            </div>
+
+            <div class="form-group">
+                <div class="password-wrapper">
+                    <label class="sr-only" for="password">Пароль</label>
+                    <input type="password" id="password" name="password" required maxlength="128" autocomplete="current-password" placeholder="Пароль">
+                    <button type="button" class="toggle-password" onclick="togglePassword()" aria-label="Показать пароль">
+                        <svg id="eye-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <button type="submit" class="btn-login" id="submit-btn">Войти</button>
+        </form>
+    </div>
+
+    <script>
+        function togglePassword() {
+            const passwordInput = document.getElementById('password');
+            const eyeIcon = document.getElementById('eye-icon');
+
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+                eyeIcon.innerHTML = `
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                `;
+            } else {
+                passwordInput.type = 'password';
+                eyeIcon.innerHTML = `
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                `;
+            }
+        }
+
+        // Валидация формы
+        const form = document.querySelector('form');
+        const usernameInput = document.getElementById('username');
+        const passwordInput = document.getElementById('password');
+        const submitBtn = document.getElementById('submit-btn');
+
+        function validateForm() {
+            const isValid = usernameInput.value.trim() && passwordInput.value;
+            submitBtn.disabled = !isValid;
+        }
+
+        function closeErrorModal() {
+            const modal = document.getElementById('error-modal');
+            if (modal) {
+                modal.remove();
+            }
+        }
+
+        usernameInput.addEventListener('input', validateForm);
+        passwordInput.addEventListener('input', validateForm);
+
+        // Начальная проверка
+        validateForm();
+    </script>
+</body>
+</html>

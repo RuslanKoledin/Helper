@@ -76,7 +76,7 @@ class ADAuth:
             conn.search(
                 search_base=self.base_dn,
                 search_filter=search_filter,
-                attributes=['displayName', 'mail', 'memberOf', 'sAMAccountName']
+                attributes=['displayName', 'mail', 'memberOf', 'sAMAccountName', 'department', 'title']
             )
 
             if not conn.entries:
@@ -91,6 +91,8 @@ class ADAuth:
                 'username': str(entry.sAMAccountName) if hasattr(entry, 'sAMAccountName') else username.split('\\')[-1],
                 'display_name': str(entry.displayName) if hasattr(entry, 'displayName') else username,
                 'email': str(entry.mail) if hasattr(entry, 'mail') else '',
+                'department': str(entry.department) if hasattr(entry, 'department') else '',
+                'title': str(entry.title) if hasattr(entry, 'title') else '',
                 'role': 'editor'  # По умолчанию редактор
             }
 
