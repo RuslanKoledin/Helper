@@ -21,6 +21,38 @@ class ADAuth:
         self.base_dn = os.getenv('AD_BASE_DN', 'DC=mbank,DC=local')
         self.use_ssl = os.getenv('AD_USE_SSL', 'false').lower() == 'true'
         self.admin_group = os.getenv('AD_ADMIN_GROUP', '')
+        self.dev_mode = os.getenv('DEV_MODE', 'false').lower() == 'true'
+
+        # Тестовые пользователи для режима разработки
+        self.test_users = {
+            'test': {
+                'password': 'test123',
+                'username': 'test',
+                'display_name': 'Тестовый Пользователь',
+                'email': 'test@mbank.local',
+                'department': 'Отдел тестирования',
+                'title': 'Тестировщик',
+                'role': 'editor'
+            },
+            'admin': {
+                'password': 'admin123',
+                'username': 'admin',
+                'display_name': 'Администратор Системы',
+                'email': 'admin@mbank.local',
+                'department': 'IT отдел',
+                'title': 'Системный администратор',
+                'role': 'super_admin'
+            },
+            'gulsaya': {
+                'password': 'test123',
+                'username': 'gulsaya',
+                'display_name': 'Гулсая Асанова',
+                'email': 'gulsaya@mbank.local',
+                'department': 'Отдел входящей линии',
+                'title': 'Специалист',
+                'role': 'editor'
+            }
+        }
 
     def verify_credentials(self, username: str, password: str) -> Optional[Dict[str, Any]]:
         """
@@ -38,6 +70,30 @@ class ADAuth:
 
         # Ограничение длины для безопасности
         if len(username) > 100 or len(password) > 128:
+            return None
+
+        # Режим разработки - используем тестовых пользователей
+        if self.dev_mode:
+            print(f"[DEV MODE] Attempting login for: {username}")
+            # Убираем домен если есть (DOMAIN\username -> username)
+            clean_username = username.split('\\')[-1].lower()
+
+            if clean_username in self.test_users:
+                user = self.test_users[clean_username]
+                if user['password'] == password:
+                    print(f"[DEV MODE] Login successful for: {username}")
+                    return {
+                        'username': user['username'],
+                        'display_name': user['display_name'],
+                        'email': user['email'],
+                        'department': user['department'],
+                        'title': user['title'],
+                        'role': user['role']
+                    }
+                else:
+                    print(f"[DEV MODE] Wrong password for: {username}")
+            else:
+                print(f"[DEV MODE] User not found: {username}")
             return None
 
         try:
